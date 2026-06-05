@@ -173,7 +173,7 @@ Authorization: Bearer <apiToken>
 {
   "id": 1,
   "inviteCode": "A7K2",
-  "status": true,
+  "status": false,
   "message": "Partie créée avec succès. Partagez le code d'invitation."
 }
 ```
@@ -186,6 +186,9 @@ Authorization: Bearer <apiToken>
 
 #### **POST** `/join`
 Rejoindre une partie existante via un code d'invitation.
+
+Une fois le second joueur connecté, le backend passe la partie en mode actif en mettant `status` à `true`.
+Le front peut alors considérer que le duel peut commencer.
 
 **Headers :**
 ```
@@ -212,7 +215,11 @@ Authorization: Bearer <apiToken>
 ---
 
 #### **GET** `/{matchId}/question`
-Récupérer la question actuelle du duel.
+Récupérer la liste des questions du duel.
+
+Dans l'état actuel du backend, cet endpoint ne renvoie pas une question liée au `matchId`.
+Il récupère les questions depuis l'API externe, les convertit en DTO et renvoie la liste complète.
+Le front doit donc sélectionner et enchaîner les questions côté client.
 
 **Headers :**
 ```
@@ -236,8 +243,12 @@ Authorization: Bearer <apiToken>
 
 ---
 
-#### **POST** `/{matchId}/answer`
-Soumettre la réponse à une question.
+#### **POST** `/{matchId}/winner`
+Déclarer le gagnant du match.
+
+Le backend actuel ne valide pas les réponses question par question sur cet endpoint.
+Il incrémente simplement les points globaux du joueur authentifié de `1` et renvoie un message texte.
+La logique de calcul des bonnes réponses, du temps de réponse et du score par manche doit donc être gérée côté front ou dans une évolution future du backend.
 
 **Headers :**
 ```
@@ -247,17 +258,24 @@ Authorization: Bearer <apiToken>
 **URL Parameters :**
 - `matchId` : ID de la partie
 
-**Query Parameters :**
-- `isCorrect` : boolean (true/false selon si la réponse est correcte)
-
 **Response (200 OK) :**
-```json
-{
-  "message": "Réponse enregistrée avec succès",
-  "points": 10,
-  "matchStatus": "ongoing|finished"
-}
+```text
+Match 1 won by user alice (total points: 42)
 ```
+
+---
+
+### Déroulé réel du duel
+
+1. Un joueur crée une partie avec `POST /api/match/create`.
+1. Le backend génère un code d'invitation à 4 chiffres et crée le match avec `status = false`.
+1. Le second joueur rejoint avec `POST /api/match/join?inviteCode=XXXX`.
+1. Si la partie n'est pas déjà pleine, le backend assigne `user2` et passe `status` à `true`.
+1. Le front peut alors charger les questions avec `GET /api/match/{matchId}/question`.
+1. Cet endpoint renvoie une liste de questions issues de l'API externe, pas une question persistée par match.
+1. Le front gère l'ordre d'affichage, les réponses, le timer et le calcul du score.
+1. Quand le duel est terminé, le front appelle `POST /api/match/{matchId}/winner` pour enregistrer le vainqueur.
+1. Dans l'implémentation actuelle, ce dernier appel ajoute seulement `1` point global au joueur authentifié.
 
 ---
 
@@ -597,20 +615,20 @@ OU
 
 ### 4. Gameplay (Priorité 4)
 ```
-[Attendre 2 joueurs] → Status de la partie
+[Attendre 2 joueurs] → `status = true` quand le second joueur rejoint
 
-[Afficher question] ← GET /api/match/{matchId}/question
+[Charger la liste de questions] ← GET /api/match/{matchId}/question
      ↓
-[Utilisateur répond]
+[Le front enchaîne les questions et valide les réponses localement]
      ↓
-[Envoyer réponse] → POST /api/match/{matchId}/answer?isCorrect=true|false
+[Déclarer le gagnant] → POST /api/match/{matchId}/winner
      ↓
-[Récupérer prochaine question ou fin de match]
+[Actualiser le classement si besoin]
 ```
 
 ### 5. Résultats (Priorité 5)
 ```
-[Afficher gagnant et points]
+[Afficher le gagnant et les points finaux]
 [Actualiser le classement]
 ```
 
@@ -619,12 +637,13 @@ OU
 ## 🎯 Points Importants pour le Frontend
 
 - ✅ L'app doit être **la plus simple possible**
-- ✅ Ajouter TOUJOURS le header `Authorization: Bearer <token>` (sauf pour signup/login)
+- ✅ Ajouter TOUJOURS le header `Authorization: Bearer <token>` sur tous les endpoints protégés (tout sauf `signup` et `login`)
 - ✅ Stocker le token JWT de manière sécurisée (localStorage/sessionStorage)
 - ✅ Gérer les erreurs HTTP (401 = ré-authentification, 400 = données invalides)
 - ✅ Les questions viennent d'une API externe via le backend
-- ✅ Le timing/rapidité des réponses n'est PAS géré côté backend - à gérer en front si nécessaire
-- ✅ La logique du duel (qui gagne, points) est gérée côté backend via RankingService
+- ✅ Le timing, l'ordre des questions et le calcul du score ne sont pas gérés par le backend sur l'endpoint match actuel
+- ✅ Le backend expose surtout l'ouverture du duel, la récupération des questions et la déclaration du gagnant
+- ✅ Le classement est disponible via les endpoints `/api/ranking`
 
 ---
 
@@ -645,7 +664,7 @@ OU
 
 3. Alice crée une partie
    POST /api/match/create (avec token_alice)
-   Response: {"id": 1, "inviteCode": "A7K2", "status": true}
+  Response: {"id": 1, "inviteCode": "A7K2", "status": false}
 
 4. Alice voit le code "A7K2" et le partage à Bob
 
@@ -654,17 +673,16 @@ OU
    Response: {"id": 1, "inviteCode": "A7K2", "status": true}
 
 6. Le match commence (2 joueurs présents)
-   Alice et Bob reçoivent les questions
+  Le front charge la liste des questions
    GET /api/match/1/question
 
-7. Alice répond
-   POST /api/match/1/answer?isCorrect=true
+7. Le front affiche les questions et calcule les réponses localement
 
-8. Bob répond
-   POST /api/match/1/answer?isCorrect=false
+8. Quand le duel est terminé, le front déclare le gagnant
+  POST /api/match/1/winner
 
-9. Après toutes les questions, résultats envoyés
-   Alice a gagné, gagne +50 points
+9. Le backend incrémente les points du vainqueur
+  Alice gagne +1 point global dans l'implémentation actuelle
    GET /api/ranking/global pour voir le nouveau classement
 
 10. Les deux joueurs voient le résultat et retournent à l'accueil

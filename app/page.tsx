@@ -1,10 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 export default function Home() {
+  const router = useRouter();
   const [authMode, setAuthMode] = useState<"signup" | "login">("signup");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
@@ -42,6 +44,7 @@ export default function Home() {
       if (data?.apiToken) {
         localStorage.setItem("apiToken", data.apiToken);
       }
+      localStorage.setItem("connectedUser", login);
 
       setSuccessMessage(
         authMode === "signup"
@@ -50,6 +53,7 @@ export default function Home() {
       );
       setLogin("");
       setPassword("");
+      router.push("/dashboard");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Erreur inconnue.");
     } finally {

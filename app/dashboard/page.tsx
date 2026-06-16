@@ -258,7 +258,7 @@ export default function DashboardPage() {
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Résultat</p>
                   <p className="text-sm leading-6 text-slate-300">
-                    Créer ou rejoindre une partie affichera ici le retour de l'API.
+                    Créer ou rejoindre une partie affichera ici les informations correspondantes.
                   </p>
                 </div>
 

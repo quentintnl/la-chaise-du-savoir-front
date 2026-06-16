@@ -80,24 +80,9 @@ export default function Home() {
                 </h1>
                 <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
                   {authMode === "signup"
-                    ? "Une inscription simple, un token JWT stocké localement et une base prête pour brancher le reste du jeu."
-                    : "Une connexion simple, un token JWT stocké localement et un accès immédiat au reste du jeu."}
+                    ? "Une inscription simple."
+                    : "Une connexion simple."}
                 </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-slate-300">Étape 1</p>
-                <p className="mt-1 font-medium text-white">{authMode === "signup" ? "Inscription" : "Connexion"}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-slate-300">Étape 2</p>
-                <p className="mt-1 font-medium text-white">Token JWT</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                <p className="text-sm text-slate-300">Étape 3</p>
-                <p className="mt-1 font-medium text-white">Prêt pour le duel</p>
               </div>
             </div>
           </div>
@@ -200,12 +185,6 @@ export default function Home() {
                   {errorMessage}
                 </p>
               ) : null}
-
-              <p className="text-xs leading-6 text-slate-400">
-                Le frontend appelle <span className="text-slate-200">POST /api/auth/signup</span> ou{" "}
-                <span className="text-slate-200">POST /api/auth/login</span> et enregistre le token dans{" "}
-                <span className="text-slate-200">localStorage</span> sous la clé <span className="text-slate-200">apiToken</span>.
-              </p>
             </div>
           </div>
         </div>

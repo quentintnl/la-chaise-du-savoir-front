@@ -2,7 +2,14 @@
 
 ## 📋 Résumé du Projet
 
-**La Chaise du Savoir** est une application de jeu de culture générale basée sur des **duels multiplayer en temps réel**. 
+**La Chaise du Savoir** est une application de jeu de culture générale basée sur des **duels multiplayer en temps réel**.
+
+## Build sur Docker
+
+Démarrer Docker Desktop
+Lancer depuis un terminal de commande
+"docker build -t la-chaise-du-savoir-front ."  
+"docker run --name la-chaise-du-savoir-front -d -p 8080:80 la-chaise-du-savoir-front"
 
 ### Fonctionnalités Principales
 

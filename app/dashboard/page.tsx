@@ -5,6 +5,31 @@ import { useEffect, useState } from "react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
+type RankingEntry = {
+  userId?: number;
+  rank?: number;
+  login?: string;
+  username?: string;
+  userLogin?: string;
+  name?: string;
+  user?: {
+    login?: string;
+    username?: string;
+    name?: string;
+  };
+  score?: number;
+  globalPoints?: number;
+  userWinstreak?: number;
+};
+
+function getRankingLogin(entry: RankingEntry) {
+  return entry.login ?? entry.username ?? entry.userLogin ?? entry.name ?? entry.user?.login ?? entry.user?.username ?? entry.user?.name ?? "Utilisateur inconnu";
+}
+
+function getRankingScore(entry: RankingEntry) {
+  return entry.score ?? entry.globalPoints ?? 0;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [connectedUser, setConnectedUser] = useState<string | null>(null);
@@ -16,11 +41,59 @@ export default function DashboardPage() {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [matchMessage, setMatchMessage] = useState("");
   const [matchError, setMatchError] = useState("");
+  const [globalRanking, setGlobalRanking] = useState<RankingEntry[]>([]);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [rankingError, setRankingError] = useState("");
 
   useEffect(() => {
     setConnectedUser(localStorage.getItem("connectedUser"));
     setApiToken(localStorage.getItem("apiToken"));
   }, []);
+
+  useEffect(() => {
+    if (!apiToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadRanking() {
+      setRankingLoading(true);
+      setRankingError("");
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/ranking/global`, {
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+          },
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(data?.error ?? "Impossible de charger le classement global.");
+        }
+
+        if (!cancelled) {
+          setGlobalRanking(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRankingError(error instanceof Error ? error.message : "Erreur inconnue.");
+        }
+      } finally {
+        if (!cancelled) {
+          setRankingLoading(false);
+        }
+      }
+    }
+
+    void loadRanking();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiToken]);
 
   async function handleCreateMatch() {
     if (!apiToken) {
@@ -55,9 +128,9 @@ export default function DashboardPage() {
         localStorage.setItem("activeMatchId", String(data.id));
         localStorage.setItem("activeMatchInviteCode", data.inviteCode);
       }
-        if (data?.id) {
-          router.push(`/match/${data.id}`);
-        }
+      if (data?.id) {
+        router.push(`/match/${data.id}`);
+      }
     } catch (error) {
       setMatchError(error instanceof Error ? error.message : "Erreur inconnue.");
     } finally {
@@ -185,7 +258,7 @@ export default function DashboardPage() {
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Résultat</p>
                   <p className="text-sm leading-6 text-slate-300">
-                    Créer ou rejoindre une partie affichera ici le retour de l'API.
+                    Créer ou rejoindre une partie affichera ici les informations correspondantes.
                   </p>
                 </div>
 
@@ -216,6 +289,42 @@ export default function DashboardPage() {
                     Ouvrir la partie créée
                   </button>
                 ) : null}
+              </div>
+
+              <div className="w-full max-w-4xl space-y-4 rounded-3xl border border-white/10 bg-slate-950/40 p-6 text-left">
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Ranking global</p>
+                  <p className="text-sm leading-6 text-slate-300">
+                    Classement des joueurs par points globaux.
+                  </p>
+                </div>
+
+                {rankingLoading ? (
+                  <p className="text-sm text-slate-300">Chargement du classement...</p>
+                ) : rankingError ? (
+                  <p className="rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                    {rankingError}
+                  </p>
+                ) : globalRanking.length > 0 ? (
+                  <div className="space-y-3">
+                    {globalRanking.slice(0, 10).map((entry) => (
+                      <div
+                        key={`${entry.userId ?? entry.rank ?? getRankingLogin(entry)}`}
+                        className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+                      >
+                        <div>
+                          <p className="font-semibold text-white">{getRankingLogin(entry)}</p>
+                          <p className="text-xs text-slate-400">
+                            Rang: <span className="font-semibold text-amber-200">#{entry.rank ?? "-"}</span>
+                          </p>
+                        </div>
+                        <p className="font-semibold text-amber-100">{getRankingScore(entry)} pts</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-300">Aucun classement disponible pour le moment.</p>
+                )}
               </div>
             </div>
           </div>

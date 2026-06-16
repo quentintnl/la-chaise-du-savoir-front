@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+const QUIZ_QUESTION_COUNT = 10;
 
 type QuestionDto = {
   type?: string;
@@ -18,6 +19,22 @@ type MatchAnswerResponse = {
   message?: string;
   points?: number;
   matchStatus?: "ongoing" | "finished";
+};
+
+type RankingEntry = {
+  id?: number;
+  userId?: number;
+  login?: string;
+  username?: string;
+  userLogin?: string;
+  score?: number;
+  rank?: number;
+  user?: {
+    id?: number;
+    login?: string;
+    username?: string;
+    userLogin?: string;
+  };
 };
 
 export default function MatchPage() {
@@ -64,6 +81,67 @@ export default function MatchPage() {
   const [questions, setQuestions] = useState<QuestionDto[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
+  const totalQuestionsToPlay = useMemo(
+    () => Math.min(QUIZ_QUESTION_COUNT, questions.length),
+    [questions.length],
+  );
+
+  async function resolveConnectedUserId(token: string) {
+    const storedUserId = localStorage.getItem("connectedUserId");
+    if (storedUserId && !Number.isNaN(Number(storedUserId))) {
+      return Number(storedUserId);
+    }
+
+    const login = localStorage.getItem("connectedUser") ?? connectedUser;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/ranking/global`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => null)) as RankingEntry[] | null;
+      if (!response.ok || !Array.isArray(data)) {
+        return null;
+      }
+
+      const currentEntry = data.find((entry) => {
+        const entryLogin =
+          entry.login ??
+          entry.username ??
+          entry.userLogin ??
+          entry.user?.login ??
+          entry.user?.username ??
+          entry.user?.userLogin;
+
+        if (entryLogin && entryLogin === login) {
+          return true;
+        }
+
+        return false;
+      });
+
+      const resolvedId = currentEntry?.id ?? currentEntry?.userId ?? currentEntry?.user?.id;
+      if (typeof resolvedId === "number") {
+        localStorage.setItem("connectedUserId", String(resolvedId));
+        return resolvedId;
+      }
+
+      if (data.length === 1) {
+        const onlyEntry = data[0];
+        const onlyEntryId = onlyEntry.id ?? onlyEntry.userId ?? onlyEntry.user?.id;
+        if (typeof onlyEntryId === "number") {
+          localStorage.setItem("connectedUserId", String(onlyEntryId));
+          return onlyEntryId;
+        }
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
 
   useEffect(() => {
     if (!apiToken || !matchId) return;
@@ -174,22 +252,36 @@ export default function MatchPage() {
 
       // move to next question locally
       const nextIndex = currentIndex + 1;
-      if (nextIndex >= questions.length) {
-        // match finished locally: declare winner (simple implementation: declare this player winner)
-        try {
-          const resp = await fetch(`${API_BASE_URL}/match/${matchId}/winner`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiToken}` },
-          });
-          // ignore response body; backend increments point for authenticated user
-        } catch (e) {
-          // ignore
+      if (nextIndex >= totalQuestionsToPlay) {
+        const finalScore = correctCount + (answerIsCorrect ? 1 : 0);
+
+        let pointsToAward = 10;
+        if (finalScore > 7) {
+          pointsToAward = 3;
+        } else if (finalScore > 5 && finalScore <= 7) {
+          pointsToAward = 1;
         }
+
+        if (pointsToAward > 0) {
+          try {
+            const connectedUserId = await resolveConnectedUserId(apiToken);
+            if (connectedUserId) {
+              await fetch(
+                `${API_BASE_URL}/ranking/user/${connectedUserId}/add-points?points=${pointsToAward}`,
+                {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${apiToken}` },
+                },
+              );
+            }
+          } catch (e) {
+            // ignore ranking update errors; the match itself is already finished locally
+          }
+        }
+
         setMatchFinished(true);
         setFeedbackMessage(
-          isTimeout
-            ? `Temps écoulé. Partie terminée. Score: ${correctCount}/${questions.length}`
-            : `Partie terminée. Score: ${correctCount + (answerIsCorrect ? 1 : 0)}/${questions.length}`,
+          `Partie terminée. Score final: ${finalScore}/${totalQuestionsToPlay}. Points gagnés: ${pointsToAward}.`,
         );
         return;
       }

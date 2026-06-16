@@ -45,6 +45,10 @@ export default function Home() {
         localStorage.setItem("apiToken", data.apiToken);
       }
       localStorage.setItem("connectedUser", login);
+      const maybeUserId = data?.userId ?? data?.id ?? data?.user?.id;
+      if (typeof maybeUserId === "number") {
+        localStorage.setItem("connectedUserId", String(maybeUserId));
+      }
 
       setSuccessMessage(
         authMode === "signup"

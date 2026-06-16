@@ -36,6 +36,7 @@ export default function MatchPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [matchFinished, setMatchFinished] = useState(false);
   const [activeInviteCode, setActiveInviteCode] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState(60);
 
   const title = useMemo(() => {
     if (matchFinished) {
@@ -122,13 +123,37 @@ export default function MatchPage() {
     };
   }, [apiToken, matchId]);
 
-  async function handleSubmitAnswer() {
+  useEffect(() => {
+    if (!question || matchFinished || isLoadingQuestion) {
+      return;
+    }
+
+    setTimeLeft(60);
+
+    const timerId = window.setInterval(() => {
+      setTimeLeft((currentTimeLeft) => {
+        if (currentTimeLeft <= 1) {
+          window.clearInterval(timerId);
+          void resolveCurrentQuestion(false, true);
+          return 0;
+        }
+
+        return currentTimeLeft - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [question, matchFinished, isLoadingQuestion]);
+
+  async function resolveCurrentQuestion(isCorrect: boolean, isTimeout = false) {
     if (!apiToken || !question?.correct_answer) {
       setErrorMessage("Impossible de soumettre la réponse.");
       return;
     }
 
-    if (!selectedAnswer) {
+    if (!isTimeout && !selectedAnswer) {
       setErrorMessage("Sélectionne une réponse avant d’envoyer.");
       return;
     }
@@ -137,15 +162,15 @@ export default function MatchPage() {
     setErrorMessage("");
 
     try {
-      const isCorrect = selectedAnswer === question.correct_answer;
+      const answerIsCorrect = isTimeout ? false : isCorrect;
 
       // send answer to backend (keeps compatibility with existing API)
-      await fetch(`${API_BASE_URL}/match/${matchId}/answer?isCorrect=${isCorrect}`, {
+      await fetch(`${API_BASE_URL}/match/${matchId}/answer?isCorrect=${answerIsCorrect}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${apiToken}` },
       }).catch(() => null);
 
-      if (isCorrect) setCorrectCount((c) => c + 1);
+      if (answerIsCorrect) setCorrectCount((c) => c + 1);
 
       // move to next question locally
       const nextIndex = currentIndex + 1;
@@ -161,7 +186,11 @@ export default function MatchPage() {
           // ignore
         }
         setMatchFinished(true);
-        setFeedbackMessage(`Partie terminée. Score: ${correctCount + (isCorrect ? 1 : 0)}/${questions.length}`);
+        setFeedbackMessage(
+          isTimeout
+            ? `Temps écoulé. Partie terminée. Score: ${correctCount}/${questions.length}`
+            : `Partie terminée. Score: ${correctCount + (answerIsCorrect ? 1 : 0)}/${questions.length}`,
+        );
         return;
       }
 
@@ -173,11 +202,18 @@ export default function MatchPage() {
       setOptions(nextChoices.sort(() => Math.random() - 0.5));
       setSelectedAnswer("");
       setCurrentIndex(nextIndex);
+      setTimeLeft(60);
+      setFeedbackMessage(isTimeout ? "Temps écoulé. Passage à la question suivante." : "Réponse enregistrée.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Erreur inconnue.");
     } finally {
       setIsSubmittingAnswer(false);
     }
+  }
+
+  async function handleSubmitAnswer() {
+    const isCorrect = selectedAnswer === question?.correct_answer;
+    await resolveCurrentQuestion(isCorrect, false);
   }
 
   return (
@@ -215,6 +251,13 @@ export default function MatchPage() {
                         {question.category ?? "Catégorie inconnue"} {question.difficulty ? `· ${question.difficulty}` : ""}
                       </p>
                       <p className="text-2xl font-semibold leading-tight text-white">{question.question}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                      <span>Temps restant</span>
+                      <span className={timeLeft <= 10 ? "font-semibold text-rose-200" : "font-semibold text-amber-100"}>
+                        {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+                      </span>
                     </div>
 
                     <div className="grid gap-3">

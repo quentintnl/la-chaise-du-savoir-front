@@ -26,10 +26,14 @@ type RankingEntry = {
   userId?: number;
   login?: string;
   username?: string;
+  userLogin?: string;
+  score?: number;
+  rank?: number;
   user?: {
     id?: number;
     login?: string;
     username?: string;
+    userLogin?: string;
   };
 };
 
@@ -82,15 +86,13 @@ export default function MatchPage() {
     [questions.length],
   );
 
-  async function resolveConnectedUserId(token: string, login: string | null) {
+  async function resolveConnectedUserId(token: string) {
     const storedUserId = localStorage.getItem("connectedUserId");
     if (storedUserId && !Number.isNaN(Number(storedUserId))) {
       return Number(storedUserId);
     }
 
-    if (!login) {
-      return null;
-    }
+    const login = localStorage.getItem("connectedUser") ?? connectedUser;
 
     try {
       const response = await fetch(`${API_BASE_URL}/ranking/global`, {
@@ -105,14 +107,34 @@ export default function MatchPage() {
       }
 
       const currentEntry = data.find((entry) => {
-        const entryLogin = entry.login ?? entry.username ?? entry.user?.login ?? entry.user?.username;
-        return entryLogin === login;
+        const entryLogin =
+          entry.login ??
+          entry.username ??
+          entry.userLogin ??
+          entry.user?.login ??
+          entry.user?.username ??
+          entry.user?.userLogin;
+
+        if (entryLogin && entryLogin === login) {
+          return true;
+        }
+
+        return false;
       });
 
       const resolvedId = currentEntry?.id ?? currentEntry?.userId ?? currentEntry?.user?.id;
       if (typeof resolvedId === "number") {
         localStorage.setItem("connectedUserId", String(resolvedId));
         return resolvedId;
+      }
+
+      if (data.length === 1) {
+        const onlyEntry = data[0];
+        const onlyEntryId = onlyEntry.id ?? onlyEntry.userId ?? onlyEntry.user?.id;
+        if (typeof onlyEntryId === "number") {
+          localStorage.setItem("connectedUserId", String(onlyEntryId));
+          return onlyEntryId;
+        }
       }
     } catch {
       return null;
@@ -233,7 +255,7 @@ export default function MatchPage() {
       if (nextIndex >= totalQuestionsToPlay) {
         const finalScore = correctCount + (answerIsCorrect ? 1 : 0);
 
-        let pointsToAward = 0;
+        let pointsToAward = 10;
         if (finalScore > 7) {
           pointsToAward = 3;
         } else if (finalScore > 5 && finalScore <= 7) {
@@ -242,7 +264,7 @@ export default function MatchPage() {
 
         if (pointsToAward > 0) {
           try {
-            const connectedUserId = await resolveConnectedUserId(apiToken, connectedUser);
+            const connectedUserId = await resolveConnectedUserId(apiToken);
             if (connectedUserId) {
               await fetch(
                 `${API_BASE_URL}/ranking/user/${connectedUserId}/add-points?points=${pointsToAward}`,
